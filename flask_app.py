@@ -1,76 +1,81 @@
-import os
-import requests
 from flask import Flask
 from flask_restx import Api, Resource
-from dotenv import load_dotenv
-
-load_dotenv()
 
 app = Flask(__name__)
-api = Api(app, doc='/docs', version='1.0', title='Agent With LangChain for Weather')
+api = Api(app, doc='/swagger.json', version='1.0', title='Generic Problems API for AI Agent')
 
-ns = api.namespace("weather", description="Weather related operations")
+ns = api.namespace("problems", description="Operações relacionadas a problemas e chamados")
 
-API_KEY = os.getenv("OPENWEATHER_API_KEY")
-BASE_URL = "https://api.openweathermap.org/data/2.5"
+# 🔹 Banco de dados simulado para a IA poder consultar dados reais
+MOCK_PROBLEMS = [
+    {"id": 1, "title": "Servidor fora do ar", "status": "open", "user_id": 101, "category": "infra"},
+    {"id": 2, "title": "Erro no login", "status": "closed", "user_id": 102, "category": "auth"},
+    {"id": 3, "title": "Lentidão no banco de dados", "status": "open", "user_id": 101, "category": "database"}
+]
 
+# 1. Listar todos os problemas
+@ns.route("/")
+class ProblemList(Resource):
+    def get(self):
+        """Retorna todos os problemas cadastrados."""
+        return MOCK_PROBLEMS
 
-@ns.route("/<string:city>")
-class Weather(Resource):
-    def get(self, city):
-        """
-        Retorna o clima ATUAL para uma cidade
-        """
-        if not API_KEY:
-            return {"error": "Chave da API do OpenWeather não configurada no .env"}, 500
+# 2. Buscar problema por ID
+@ns.route("/<int:id>")
+class ProblemByID(Resource):
+    def get(self, id):
+        """Retorna os detalhes de um problema específico pelo seu ID (número)."""
+        problem = next((p for p in MOCK_PROBLEMS if p["id"] == id), None)
+        if problem:
+            return problem
+        return {"error": "Problema não encontrado"}, 404
 
-        # Monta a URL para o clima atual
-        url = f"{BASE_URL}/weather?q={city}&appid={API_KEY}&units=metric&lang=pt_br"
-        response = requests.get(url)
-        data = response.json()
+# 3. Listar meus problemas (Mock)
+@ns.route("/my_problems")
+class MyProblems(Resource):
+    def get(self):
+        """Retorna os problemas atribuídos ao usuário logado no momento."""
+        # Simulando que o usuário logado é o 101
+        return [p for p in MOCK_PROBLEMS if p["user_id"] == 101]
 
-        if response.status_code != 200:
-            return {"error": data.get("message", "Erro ao buscar cidade")}, response.status_code
+# 4. Filtrar por status
+@ns.route("/status/<string:status>")
+class ProblemsByStatus(Resource):
+    def get(self, status):
+        """Retorna problemas filtrados pelo status (ex: 'open' ou 'closed')."""
+        return [p for p in MOCK_PROBLEMS if p["status"] == status.lower()]
 
-        return {
-            "city": data["name"],
-            "temperature": data["main"]["temp"],
-            "description": data["weather"][0]["description"],
-            "humidity": data["main"]["humidity"]
-        }
+# 5. Filtrar por categoria
+@ns.route("/category/<string:category>")
+class ProblemsByCategory(Resource):
+    def get(self, category):
+        """Retorna problemas filtrados por categoria (ex: 'infra', 'auth')."""
+        return [p for p in MOCK_PROBLEMS if p["category"] == category.lower()]
 
+# 6. Buscar problemas de um usuário específico
+@ns.route("/user/<int:user_id>")
+class ProblemsByUser(Resource):
+    def get(self, user_id):
+        """Retorna todos os problemas relatados por um ID de usuário específico."""
+        return [p for p in MOCK_PROBLEMS if p["user_id"] == user_id]
 
-@ns.route("/forecast/<string:city>")
-class Forecast(Resource):
-    def get(self, city):
-        """
-        Retorna a PREVISÃO DO TEMPO para amanhã em uma cidade
-        """
-        if not API_KEY:
-            return {"error": "Chave da API do OpenWeather não configurada no .env"}, 500
+# 7. Buscar problemas recentes
+@ns.route("/recent")
+class RecentProblems(Resource):
+    def get(self):
+        """Retorna os últimos problemas registrados no sistema."""
+        # Apenas retornando os 2 últimos como simulação
+        return MOCK_PROBLEMS[-2:]
 
-        # Monta a URL para a previsão (forecast)
-        url = f"{BASE_URL}/forecast?q={city}&appid={API_KEY}&units=metric&lang=pt_br"
-        response = requests.get(url)
-        data = response.json()
-
-        if response.status_code != 200:
-            return {"error": data.get("message", "Erro ao buscar cidade")}, response.status_code
-
-        forecast_list = data.get("list", [])
-
-        if not forecast_list:
-            return {"error": "Previsão indisponível"}, 404
-
-        target_forecast = forecast_list[8] if len(forecast_list) > 8 else forecast_list[0]
-
-        return {
-            "city": data["city"]["name"],
-            "forecast": target_forecast["weather"][0]["description"],
-            "temperature": target_forecast["main"]["temp"],
-            "date_time": target_forecast["dt_txt"]
-        }
-
+# 8. Estatísticas dos problemas
+@ns.route("/stats")
+class ProblemStats(Resource):
+    def get(self):
+        """Retorna uma contagem de problemas abertos e fechados."""
+        open_count = sum(1 for p in MOCK_PROBLEMS if p["status"] == "open")
+        closed_count = sum(1 for p in MOCK_PROBLEMS if p["status"] == "closed")
+        return {"open_problems": open_count, "closed_problems": closed_count, "total": len(MOCK_PROBLEMS)}
 
 if __name__ == '__main__':
+    # Mantendo a porta 8000
     app.run(port=8000, debug=True)
